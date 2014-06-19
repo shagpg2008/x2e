@@ -70,11 +70,26 @@ static FILE *pcap_file_open(const char *filename, unsigned int linktype, unsigne
 static unsigned int pcap_packet_write(FILE* fp, struct timeval tm, const char *pkt, unsigned int len)
 {
     struct pcap_pkt_hdr hdr = {0};
+	int needhdr = len < 14 || pkt[12] != 0x8 || pkt[13] != 0x0;
+	char l2hdr[] = {0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
+		0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x08, 0x00};
+	
+	if(needhdr) {
+		len += 14;
+	}
+
 	hdr.ts = tm;
 	hdr.caplen = len;
 	hdr.len    = len;
 
     fwrite((const char*)&hdr, 1, sizeof(hdr), fp);
+
+	//If the 13th and 14th isn't 0x80 0x00, then we need add the stack l2 header.
+	if(needhdr) {
+		fwrite(l2hdr, 1, 14, fp);
+		len -= 14;
+	}
+
     len = fwrite(pkt, 1, len, fp);
     return len+sizeof(hdr);
 }
@@ -160,7 +175,7 @@ static int pcap_find_pktdat(FILE *fp, unsigned char *data, unsigned int max)
             data+8, data+9, data+10, data+11, data+12, data+13, data+14, data+15);
         data += num;
         len += num;
-        max -= 16;
+        max -= num;
         
         if(num < 16) {
              break;
