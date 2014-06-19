@@ -6,6 +6,7 @@
 #include "x2eDlg.h"
 #include <io.h> 
 #include <time.h>
+#include <shellapi.h>
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -91,6 +92,7 @@ BEGIN_MESSAGE_MAP(CX2eDlg, CDialog)
 	ON_WM_QUERYDRAGICON()
 	ON_BN_CLICKED(IDC_BUTTON_BROWSE, OnButtonBrowse)
 	ON_BN_CLICKED(IDC_BUTTON_TARGET, OnButtonTarget)
+	ON_BN_CLICKED(IDC_BUTTON_OPEN_TARGET, OnButtonOpenTarget)
 	ON_WM_DROPFILES()
 	//}}AFX_MSG_MAP
 END_MESSAGE_MAP()
@@ -270,9 +272,35 @@ void CX2eDlg::OnOK()
 	m_ctrlInfo.SetSel(len,len);             //将插入光标放在最后
 	m_ctrlInfo.ReplaceSel(info);
 	m_ctrlInfo.ScrollWindow(0,0);            //滚动到插入点
+	m_strTargetFilePath = target;
+}
+
+void CX2eDlg::OnButtonOpenTarget()
+{
+	if(m_strTargetFilePath == _T("")
+		|| _access(m_strTargetFilePath, 0) == -1) {
+		AfxMessageBox(_T("Please transfer the pcap file first."));
+		return ;
+	}
+
+	ShellExecute(NULL,"open",m_strTargetFilePath,NULL,NULL,SW_SHOW);
 }
 
 void CX2eDlg::OnButtonTarget() 
 {
-	
+	CFileDialog dlg(FALSE, NULL, NULL,
+		OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT, 
+		_T("IMAGE Files (*.pcap)|*.pcap||"));
+
+	UpdateData();
+	if(dlg.DoModal() != IDOK) {
+		return ;
+	}
+
+	m_strTargetFilePath = dlg.GetPathName();
+	if(m_strTargetFilePath.Find(_T(".pcap"), 0) < 0
+		&& m_strTargetFilePath.Find(_T(".PCAP"), 0) < 0) {
+		m_strTargetFilePath += _T(".pcap");
+	}
+	UpdateData(FALSE);
 }

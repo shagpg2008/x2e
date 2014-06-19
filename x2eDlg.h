@@ -47,6 +47,7 @@ protected:
 	virtual void OnOK();
 	afx_msg void OnButtonTarget();
 	afx_msg void OnChangeEditTarget();
+	afx_msg void OnButtonOpenTarget();
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 };
