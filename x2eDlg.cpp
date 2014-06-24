@@ -191,6 +191,7 @@ void CX2eDlg::OnButtonBrowse()
 	}
 
 	m_szFilePath = dlg.GetPathName();
+	m_strTargetFilePath = _T("");
 	UpdateData(FALSE);
 }
 
@@ -201,6 +202,7 @@ void CX2eDlg::OnDropFiles( HDROP hDropInfo )
 	DragFinish(hDropInfo);
 
 	m_szFilePath = szFile;
+	m_strTargetFilePath = _T("");
 	UpdateData(FALSE);
 }
 

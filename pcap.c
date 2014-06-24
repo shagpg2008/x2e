@@ -11,6 +11,8 @@ struct timeval{
 
 #define PCAP_VERSION_MAJOR 2
 #define PCAP_VERSION_MINOR 4
+#define NEED_READ_YES 1
+#define NEED_READ_NO  0
 
 #define PCAP_HEADER_DATA(linktype, snaplen)   \
 char __pcap_header_buff[] = {                 \
@@ -29,8 +31,9 @@ struct pcap_pkt_hdr {
 };  
 
 static char buff[1<<20] = {0};
+static int linktype = 101;
 static time_t now = 0;
-static int needread = 1;
+static int needread = NEED_READ_YES;
 
 static void pcap_strip_chars(char *buff)
 {
@@ -70,12 +73,11 @@ static FILE *pcap_file_open(const char *filename, unsigned int linktype, unsigne
 static unsigned int pcap_packet_write(FILE* fp, struct timeval tm, const char *pkt, unsigned int len)
 {
     struct pcap_pkt_hdr hdr = {0};
-	int needhdr = len < 14 || pkt[12] != 0x8 || pkt[13] != 0x0;
-	char l2hdr[] = {0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
-		0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x08, 0x00};
-	
-	if(needhdr) {
-		len += 14;
+	int neednthdr = linktype == 101 && (len > 14 && ((pkt[12] == 0x8 && (pkt[13] == 0x0 || pkt[13] == 0x6))));
+
+	if(neednthdr) {
+		pkt += 14;
+		len -= 14;
 	}
 
 	hdr.ts = tm;
@@ -83,15 +85,53 @@ static unsigned int pcap_packet_write(FILE* fp, struct timeval tm, const char *p
 	hdr.len    = len;
 
     fwrite((const char*)&hdr, 1, sizeof(hdr), fp);
-
-	//If the 13th and 14th isn't 0x80 0x00, then we need add the stack l2 header.
-	if(needhdr) {
-		fwrite(l2hdr, 1, 14, fp);
-		len -= 14;
-	}
-
     len = fwrite(pkt, 1, len, fp);
     return len+sizeof(hdr);
+}
+
+static void pcap_check_lnkhdr(FILE *fp)
+{
+	char *tmp = NULL;
+	while(!feof(fp) && (fgets(buff, sizeof(buff), fp))) {
+		if(buff[0] == '\r' || buff[0] == '\n' || buff[1] == '\r' || buff[1] == '\n') {
+            continue;
+        }
+        
+        if(strstr(buff, " > ") != NULL) {
+			needread = NEED_READ_NO;
+            break;
+        }
+
+		if(strstr(buff, "tcpdump") == NULL
+			&& strstr(buff, "T:") == NULL) {
+			continue;
+		}
+
+		//tcpdump -Xls 0  -n
+		tmp = strtok(buff, " ");
+		if(tmp != NULL) {
+			while((tmp = strtok(NULL, " ")) != NULL) {
+				if(strstr(tmp, "xx") != NULL
+					|| strstr(tmp, "XX") != NULL) {
+					linktype = 1;
+					return;
+				}
+			}
+		} 
+
+		//this is for DX campatiable.
+		//Z1T:-i,el0,-xx,-s,0,udp
+		tmp = strtok(buff, ",");
+		if(tmp != NULL) {
+			while((tmp = strtok(NULL, ",")) != NULL) {
+				if(strstr(tmp, "xx") != NULL
+					|| strstr(tmp, "XX") != NULL) {
+					linktype = 1;
+					return;
+				}
+			}
+		}
+	}
 }
 
 static int pcap_find_pkthdr(FILE *fp, struct timeval *tm)
@@ -108,8 +148,8 @@ static int pcap_find_pkthdr(FILE *fp, struct timeval *tm)
         now = mktime(&tmp);
     }
     
-    while(!feof(fp) && (needread != 0 || fgets(buff, sizeof(buff), fp))) {
-		needread = 0;
+    while(!feof(fp) && (needread == NEED_READ_NO || fgets(buff, sizeof(buff), fp))) {
+		needread = NEED_READ_YES;
         if(buff[0] == '\r' || buff[0] == '\n' || buff[1] == '\r' || buff[1] == '\n') {
             continue;
         }
@@ -153,7 +193,7 @@ static int pcap_find_pktdat(FILE *fp, unsigned char *data, unsigned int max)
         }
         
 		if(strstr(buff, " > ") != NULL) {
-			needread = 1; //the next pkt head read, so doesn't read another line.
+			needread = NEED_READ_NO; //the next pkt head read, so doesn't read another line.
             break;
         }
 
@@ -161,7 +201,7 @@ static int pcap_find_pktdat(FILE *fp, unsigned char *data, unsigned int max)
 			|| (lptmp = (unsigned char *)strstr(buff, ": ")) == NULL) {
             continue;
         }
-        
+
         lptmp++;
 
 		pcap_strip_chars(lptmp);
@@ -204,7 +244,13 @@ int convert_pcap_file(const char *fromf, const char *target)
         return -1;
     }
     
-    fp = pcap_file_open(target, 1, 0xffff);
+	memset(buff, 0, sizeof(buff));
+	linktype = 101;
+	needread = NEED_READ_YES;
+
+	pcap_check_lnkhdr(from);
+
+    fp = pcap_file_open(target, linktype, 0xffff);
 	if(fp == NULL) {
 		fclose(from);
 		return -1;
