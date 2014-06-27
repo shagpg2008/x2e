@@ -30,7 +30,7 @@ struct pcap_pkt_hdr {
     unsigned int len;       /* length this packet (off wire) */  
 };  
 
-static char buff[1<<20] = {0};
+static char buff[1<<10] = {0};
 static int linktype = 101;
 static time_t now = 0;
 static int needread = NEED_READ_YES;
@@ -40,16 +40,19 @@ static void pcap_strip_chars(char *buff)
 	char *tmp = buff;
 
 	while(*tmp != 0) {
-		if((*tmp >= '0' && *tmp <= '9') 
+		if(((*tmp >= '0' && *tmp <= '9') 
 			|| (*tmp >= 'a' && *tmp <= 'f')
 			|| (*tmp >= 'A' && *tmp <= 'F')
-			|| (*tmp == 'x' || *tmp == 'X')) {
-			
-			if(buff != tmp) {
-				*buff = *tmp;
-			}
+			|| (*tmp == 'x' || *tmp == 'X')
+			|| *tmp == ' ' || *tmp == ':')) {
 
+			*buff = *tmp;
 			buff++;
+		}
+
+		//strip "^C, ^M", etc.
+		if(*tmp == '^') {
+			tmp ++;
 		}
 
 		tmp++;
@@ -137,16 +140,7 @@ static void pcap_check_lnkhdr(FILE *fp)
 static int pcap_find_pkthdr(FILE *fp, struct timeval *tm)
 {
     char *lptmp = NULL;
-    
-    if(now == 0) {
-        time_t timep = time(NULL);
-        struct tm* p = localtime(&timep);
-        struct tm tmp = *p;
-        tmp.tm_sec  = 0;
-        tmp.tm_min  = 0;
-        tmp.tm_hour = 0;
-        now = mktime(&tmp);
-    }
+	int num = 0;
     
     while(!feof(fp) && (needread == NEED_READ_NO || fgets(buff, sizeof(buff), fp))) {
 		needread = NEED_READ_YES;
@@ -154,27 +148,21 @@ static int pcap_find_pkthdr(FILE *fp, struct timeval *tm)
             continue;
         }
         
-        if(strstr(buff, " > ") == NULL) {
-            continue;
-        }
-        
-        if((lptmp = strchr(buff, ' ')) == NULL) {
-            continue;
-        }
-        
-        *lptmp = 0;
-        
         //hh:mm:ss.uuuuuu format
         if(strchr(buff, ':') != NULL) {
             unsigned int hour = 0, min = 0, sec = 0, us = 0;
-            sscanf(buff, " %d:%d:%d.%d", &hour, &min, &sec, &us);
+            num = sscanf(buff, "%d:%d:%d.%d", &hour, &min, &sec, &us);
             tm->tv_sec  = now + hour*3600+min*60+sec;
             tm->tv_usec = us;
             //printf("now=%d,buf=%s,h:%d,m=%d,s:%d,us:%d\n", now, buff, hour, min, sec, us);
         } else {
             //ss.uuuuuu format
-            sscanf(buff, "%d.%d", &tm->tv_sec, &tm->tv_usec);
+            num = sscanf(buff, "%d.%d", &tm->tv_sec, &tm->tv_usec);
         }
+
+		if(num < 2) {
+			continue;
+		}
         
         return 1;
     }
@@ -185,38 +173,40 @@ static int pcap_find_pkthdr(FILE *fp, struct timeval *tm)
 static int pcap_find_pktdat(FILE *fp, unsigned char *data, unsigned int max)
 {
     unsigned char *lptmp = NULL;
-    int num = 0, len = 0;
+    int num = 0, len = 0, line = 0;
     
-    while(!feof(fp) && fgets(buff, sizeof(buff), fp)) {
+    while(!feof(fp) && fgets(buff, sizeof(buff), fp) && max > 0) {
         if(buff[0] == '\r' || buff[0] == '\n' || buff[1] == '\r' || buff[1] == '\n') {
             continue;
         }
-        
-		if(strstr(buff, " > ") != NULL) {
-			needread = NEED_READ_NO; //the next pkt head read, so doesn't read another line.
-            break;
-        }
+
+		lptmp = buff;
 
         if((lptmp = (unsigned char *)strstr(buff, "0x")) == NULL
 			|| (lptmp = (unsigned char *)strstr(buff, ": ")) == NULL) {
-            continue;
+			if(len != 0) {
+				needread = NEED_READ_NO;
+				break;
+			}
+			continue;
         }
 
         lptmp++;
-
 		pcap_strip_chars(lptmp);
-        
-        if(max < 16) {
-            break;
-        }
-        
-        num = sscanf(lptmp, "%02X%02X %02X%02X %02X%02X %02X%02X %02X%02X %02X%02X %02X%02X %02X%02X", 
+
+        num = sscanf(lptmp, " %02X%02X %02X%02X %02X%02X %02X%02X %02X%02X %02X%02X %02X%02X %02X%02X", 
             data+0, data+1, data+2, data+3, data+4, data+5, data+6, data+7, 
             data+8, data+9, data+10, data+11, data+12, data+13, data+14, data+15);
+
         data += num;
         len += num;
         max -= num;
-        
+
+		if(num <= 0) {
+			needread = NEED_READ_NO; //the next pkt head read, so doesn't read another line.
+			break;
+		}
+
         if(num < 16) {
              break;
         }
@@ -247,6 +237,16 @@ int convert_pcap_file(const char *fromf, const char *target)
 	memset(buff, 0, sizeof(buff));
 	linktype = 101;
 	needread = NEED_READ_YES;
+	
+	if(now == 0) {
+        time_t timep = time(NULL);
+        struct tm* p = localtime(&timep);
+        struct tm tmp = *p;
+        tmp.tm_sec  = 0;
+        tmp.tm_min  = 0;
+        tmp.tm_hour = 0;
+        now = mktime(&tmp);
+    }
 
 	pcap_check_lnkhdr(from);
 
@@ -261,7 +261,9 @@ int convert_pcap_file(const char *fromf, const char *target)
         if(size > 0) {
             pcap_packet_write(fp, tm, data, size);
 			num++;
-        }
+        }/* else {
+			printf("Skip:%s\n", buff);
+		}*/
     }
     
     pcap_file_close(fp);
@@ -269,3 +271,17 @@ int convert_pcap_file(const char *fromf, const char *target)
     return num;
 }
 
+
+#ifdef __SHAGPG
+
+int main(int argc, char *argv[])
+{
+	if(argv[1] == NULL || argv[2] == NULL) {
+		printf("Usage: command <src file> <dst file>\n");
+		return -1;
+	}
+
+	convert_pcap_file(argv[1], argv[2]);
+}
+
+#endif
