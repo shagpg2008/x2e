@@ -237,16 +237,40 @@ void GetBakeFileName(const char *filename, char *backup, int len)
 }
 
 extern "C" int convert_pcap_file(const char *from, const char *target);
+
 void CX2eDlg::OnOK() 
 {
 	CString target;
 	int num = 0;
+	BOOL fromClipboard = FALSE;
+	const char * const tmp_file_name = "tmp.log";
 
 	UpdateData();
 	target = m_strTargetFilePath;
 	if(m_szFilePath == _T("")) {
-		AfxMessageBox(_T("Please select the tcpdump log file."));
-		return ;
+		if ( OpenClipboard() )
+		{
+			HANDLE hData = GetClipboardData( CF_TEXT );
+			if(hData != INVALID_HANDLE_VALUE) {
+				char *buffer = (char*)GlobalLock( hData );
+				if(buffer != NULL) {
+					FILE *fp = fopen(tmp_file_name, "wb");
+					int len = strlen(buffer);
+					fwrite(buffer, 1, len, fp);
+					fclose(fp);
+					m_szFilePath = tmp_file_name;
+					fromClipboard = TRUE;
+				}
+				GlobalUnlock( hData );
+			}
+
+			CloseClipboard();
+		} 
+	}
+
+	if(m_szFilePath == _T("")) {
+			AfxMessageBox(_T("Please select the tcpdump log file or copy data to clipboard."));
+			return ;
 	}
 
 	if(_access(m_szFilePath, 0) == -1) {
@@ -268,13 +292,22 @@ void CX2eDlg::OnOK()
 	struct tm now_tm = *localtime(&now);
 	info.Format(_T("%d:%d:%d Process: %d items, time cost:%dms, target:%s\r\n\r\n"), 
 		now_tm.tm_hour, now_tm.tm_min, now_tm.tm_sec,
-		num, GetTickCount() - nStart, target );
+		num, GetTickCount() - nStart, num!=0?target:"");
 
 	int len = m_ctrlInfo.GetWindowTextLength();
 	m_ctrlInfo.SetSel(len,len);             //将插入光标放在最后
 	m_ctrlInfo.ReplaceSel(info);
 	m_ctrlInfo.ScrollWindow(0,0);            //滚动到插入点
 	m_strTargetFilePath = target;
+
+	if(fromClipboard) {
+		m_szFilePath = _T("");
+		remove(tmp_file_name);
+	}
+
+	if(num == 0) {
+		AfxMessageBox(_T("Please select the right file or data."));
+	}
 }
 
 void CX2eDlg::OnButtonOpenTarget()

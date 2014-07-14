@@ -63,7 +63,7 @@ static void pcap_strip_chars(char *buff)
 
 static FILE *pcap_file_open(const char *filename, unsigned int linktype, unsigned int snaplen )
 {
-    PCAP_HEADER_DATA(linktype, snaplen);
+	PCAP_HEADER_DATA(linktype, snaplen);
     FILE *fp =fopen(filename, "wb");
     if(fp == NULL) {
         return NULL;
@@ -250,15 +250,23 @@ int convert_pcap_file(const char *fromf, const char *target)
 
 	pcap_check_lnkhdr(from);
 
-    fp = pcap_file_open(target, linktype, 0xffff);
-	if(fp == NULL) {
-		fclose(from);
-		return -1;
-	}
+//    fp = pcap_file_open(target, linktype, 0xffff);
+//	if(fp == NULL) {
+//		fclose(from);
+//		return -1;
+//	}
 
     while(pcap_find_pkthdr(from, &tm)) {
         size = pcap_find_pktdat(from, data, sizeof(data));
         if(size > 0) {
+			if(num == 0) {
+				fp = pcap_file_open(target, linktype, 0xffff);
+				if(fp == NULL) {
+					fclose(from);
+					return -1;
+				}
+			}
+
             pcap_packet_write(fp, tm, data, size);
 			num++;
         }/* else {

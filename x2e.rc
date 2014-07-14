@@ -64,15 +64,21 @@ END
 // Dialog
 //
 
-IDD_ABOUTBOX DIALOG DISCARDABLE  0, 0, 235, 55
+IDD_ABOUTBOX DIALOG DISCARDABLE  0, 0, 239, 83
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "About Pcap"
 FONT 8, "MS Sans Serif"
 BEGIN
-    ICON            IDR_MAINFRAME,IDC_STATIC,11,17,20,20
+    ICON            IDR_MAINFRAME,IDC_STATIC,11,17,21,20
     LTEXT           "Pcap 1.1",IDC_STATIC,40,19,119,8,SS_NOPREFIX
     LTEXT           "Copyright Shagpg Liao (C) 2014",IDC_STATIC,40,28,119,8
-    DEFPUSHBUTTON   "OK",IDOK,178,7,50,14,WS_GROUP
+    DEFPUSHBUTTON   "OK",IDOK,185,7,50,14,WS_GROUP
+    LTEXT           "Static",IDC_STATIC,13,82,222,32
+    GROUPBOX        "Readme",IDC_STATIC,7,43,228,37
+    LTEXT           "1. Convert from File, you can drag & drop file, or browse file.",
+                    IDC_STATIC,11,54,221,9
+    LTEXT           "2. Convert from Windows clipboard. Only transfer button need pressed",
+                    IDC_STATIC,11,66,221,9
 END
 
 IDD_X2E_DIALOG DIALOGEX 0, 0, 243, 111
@@ -80,7 +86,7 @@ STYLE DS_MODALFRAME | WS_MINIMIZEBOX | WS_POPUP | WS_VISIBLE | WS_CAPTION |
     WS_SYSMENU
 EXSTYLE WS_EX_ACCEPTFILES | WS_EX_APPWINDOW
 CAPTION "Pcap 1.1"
-FONT 8, "MS Sans Serif"
+FONT 8, "MS Sans Serif", 0, 0, 0x1
 BEGIN
     DEFPUSHBUTTON   "T&ranslate",IDOK,186,8,50,14
     PUSHBUTTON      "&Browse",IDC_BUTTON_BROWSE,7,7,50,14
@@ -150,9 +156,9 @@ BEGIN
     IDD_ABOUTBOX, DIALOG
     BEGIN
         LEFTMARGIN, 7
-        RIGHTMARGIN, 228
+        RIGHTMARGIN, 235
         TOPMARGIN, 7
-        BOTTOMMARGIN, 48
+        BOTTOMMARGIN, 55
     END
 
     IDD_X2E_DIALOG, DIALOG
