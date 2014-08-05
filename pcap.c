@@ -30,7 +30,7 @@ struct pcap_pkt_hdr {
     unsigned int len;       /* length this packet (off wire) */  
 };  
 
-static char buff[1<<10] = {0};
+static char buff[1<<15] = {0};
 static int linktype = 101;
 static time_t now = 0;
 static int needread = NEED_READ_YES;
@@ -139,28 +139,42 @@ static void pcap_check_lnkhdr(FILE *fp)
 
 static int pcap_find_pkthdr(FILE *fp, struct timeval *tm)
 {
+	unsigned int year = 0, month = 0, day = 0, hour = 0, min = 0, sec = 0, us = 0;
+
     char *lptmp = NULL;
 	int num = 0;
-    
+
     while(!feof(fp) && (needread == NEED_READ_NO || fgets(buff, sizeof(buff), fp))) {
 		needread = NEED_READ_YES;
         if(buff[0] == '\r' || buff[0] == '\n' || buff[1] == '\r' || buff[1] == '\n') {
             continue;
         }
         
+		//yyyy-mm-dd hh:mm:ss.uuuuuu format
+		if((num = sscanf(buff, "%d-%d-%d %d:%d:%d.%d", &year, &month, &day, &hour, &min, &sec, &us)) >= 7) {
+			struct tm tmp = {0};
+			tmp.tm_year = year-1900;
+			tmp.tm_mon  = month-1;
+			tmp.tm_mday = day;
+			tmp.tm_hour = hour;
+			tmp.tm_min  = min;
+			tmp.tm_sec =  sec;
+
+            tm->tv_sec  = mktime(&tmp);
+            tm->tv_usec = us;
+		}
         //hh:mm:ss.uuuuuu format
-        if(strchr(buff, ':') != NULL) {
-            unsigned int hour = 0, min = 0, sec = 0, us = 0;
-            num = sscanf(buff, "%d:%d:%d.%d", &hour, &min, &sec, &us);
+        else if((num = sscanf(buff, "%d:%d:%d.%d", &hour, &min, &sec, &us)) >= 4) {
             tm->tv_sec  = now + hour*3600+min*60+sec;
             tm->tv_usec = us;
             //printf("now=%d,buf=%s,h:%d,m=%d,s:%d,us:%d\n", now, buff, hour, min, sec, us);
-        } else {
-            //ss.uuuuuu format
-            num = sscanf(buff, "%d.%d", &tm->tv_sec, &tm->tv_usec);
-        }
-
-		if(num < 2) {
+        } 
+		//ss.uuuuuu format
+		else if((num = sscanf(buff, "%d.%d", &tm->tv_sec, &tm->tv_usec)) >= 2){
+            
+        } 
+		//Not found.
+		else {
 			continue;
 		}
         
@@ -182,7 +196,12 @@ static int pcap_find_pktdat(FILE *fp, unsigned char *data, unsigned int max)
 
 		lptmp = buff;
 
-        if((lptmp = (unsigned char *)strstr(buff, "0x")) == NULL
+		if(*lptmp != ' ' && *lptmp != '\t' && *lptmp != '^') {
+			needread = NEED_READ_NO;
+			break;
+		}
+
+   /*     if((lptmp = (unsigned char *)strstr(buff, "0x")) == NULL
 			|| (lptmp = (unsigned char *)strstr(buff, ": ")) == NULL) {
 			if(len != 0) {
 				needread = NEED_READ_NO;
@@ -190,8 +209,13 @@ static int pcap_find_pktdat(FILE *fp, unsigned char *data, unsigned int max)
 			}
 			continue;
         }
-
-        lptmp++;
+*/
+		if((lptmp = (unsigned char *)strstr(buff, ": ")) == NULL) {
+			lptmp = buff;
+		} else {
+			lptmp++;
+		}
+        
 		pcap_strip_chars(lptmp);
 
         num = sscanf(lptmp, " %02X%02X %02X%02X %02X%02X %02X%02X %02X%02X %02X%02X %02X%02X %02X%02X", 
@@ -207,9 +231,9 @@ static int pcap_find_pktdat(FILE *fp, unsigned char *data, unsigned int max)
 			break;
 		}
 
-        if(num < 16) {
-             break;
-        }
+        //if(num < 16) {
+        //     break;
+        //}
     }
     
     return len;
